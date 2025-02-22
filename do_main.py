@@ -6,6 +6,7 @@ from urllib.request import urlretrieve
 from pygame.locals import *
 from random import randrange
 from sys import exit
+import requests
 import cv2
 import threading
 import hashlib
@@ -19,6 +20,19 @@ os.makedirs("./episode/", exist_ok=True)
 user_setting_file =  open("settings.json",'r',encoding='utf8') 
 user_setting = json.load(user_setting_file)
 user_setting_file.close()
+
+proxy_config = user_setting.get('proxy', {})
+proxies = None
+retry_times = 3
+
+if proxy_config.get('enable', False):
+    proxies = {
+        'http': proxy_config['http'],
+        'https': proxy_config['https']
+    }
+    retry_times = proxy_config.get('retry', 3)
+    print(f'[代理状态] 已启用 | 地址: {proxies["http"]} | 重试次数: {retry_times}')
+
 
 class Button:
     rect = (0, 0, 0, 0)
@@ -112,22 +126,40 @@ def get_url(file_name):
     return cdn_url+path+md5+file_end
 
 def download_file(url, filename):
-
     print(f'Downloading {filename}...')
     if os.path.exists(filename):
-        print(f'{filename} 已下载，跳过.')
+        print(f'{filename} 已存在，跳过下载')
         return
-    download_times = 5
-    while download_times > 0:
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
+    for i in range(retry_times):
         try:
-            urlretrieve(url, filename)
-        except:
-            print("error downloading : " + filename)
-            download_times = download_times - 1
-            continue
-        else:
-            break
-    print(f'{filename} downloaded.')
+            response = requests.get(url, headers=headers, proxies=proxies, timeout=30, stream=True)
+            response.raise_for_status()
+            
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+            
+            with open(filename, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            progress = downloaded / total_size * 100
+                            print(f'\r下载进度: {progress:.1f}%', end='')
+            
+            print(f'\n{filename} 下载完成')
+            return
+        except Exception as e:
+            print(f'\n下载失败 ({i+1}/{retry_times}): {str(e)}')
+            time.sleep(2)
+    
+    print(f'[错误] 无法下载 {filename}')
+
 
 # 加载预览图
 def load_preview(json_list):
@@ -430,6 +462,7 @@ GAME_SIZE = (display_width, display_height)
 下载线程数 = user_setting['下载线程数']
 use_translate = True if user_setting['翻译api']['use_translate'] == 'yes' else False
 bot_check = True if user_setting['是否喜欢furau'] == 'yes' else False
+
 
 # 初始化
 pygame.init()
