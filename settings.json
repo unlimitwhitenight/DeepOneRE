@@ -7,7 +7,7 @@
         "use_translate":"yes"
     },
     "proxy": {
-        "enable": false,
+        "enable": False,
         "http": "http://127.0.0.1:10800",
         "https": "http://127.0.0.1:10800",
         "retry": 3
